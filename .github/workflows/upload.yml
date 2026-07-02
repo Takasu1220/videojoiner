@@ -1,0 +1,34 @@
+name: Upload Video to Streamable
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'video-upload')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse Issue and Upload to Streamable
+        env:
+          STREAMABLE_EMAIL: ${{ secrets.STREAMABLE_EMAIL }}
+          STREAMABLE_PASSWORD: ${{ secrets.STREAMABLE_PASSWORD }}
+        run: |
+          # Issueの本文から動画の直リンクURL（または添付ファイルURL）とタイトルを抽出
+          VIDEO_URL=$(echo "${{ github.event.issue.body }}" | grep -oE "https://[^\s]+")
+          VIDEO_TITLE="${{ github.event.issue.title }}"
+          
+          # Streamable APIを叩いて動画をアップロード（インポート）
+          RESPONSE=$(curl -u "$STREAMABLE_EMAIL:$STREAMABLE_PASSWORD" \
+            -d "url=$VIDEO_URL" \
+            -d "title=$VIDEO_TITLE" \
+            https://streamable.com)
+          
+          # レスポンスから短縮コード（shortcode）を抽出
+          SHORTCODE=$(echo $RESPONSE | jq -r '.shortcode')
+          STREAMABLE_EMBED="https://streamable.com"
+          
+          # videos.json にデータを追加するスクリプトを実行（Node.js or Python）
+          # その後、変更をリポジトリにコミット＆プッシュする
