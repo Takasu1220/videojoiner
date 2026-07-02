@@ -6,29 +6,72 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
+    # 「video-upload」というラベルがついたIssue（投稿）が作られたときだけ実行する
     if: contains(github.event.issue.labels.*.name, 'video-upload')
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Parse Issue and Upload to Streamable
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-node-version: '20'
+
+      - name: Process Video and Upload
         env:
           STREAMABLE_EMAIL: ${{ secrets.STREAMABLE_EMAIL }}
           STREAMABLE_PASSWORD: ${{ secrets.STREAMABLE_PASSWORD }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          # Issueの本文から動画の直リンクURL（または添付ファイルURL）とタイトルを抽出
-          VIDEO_URL=$(echo "${{ github.event.issue.body }}" | grep -oE "https://[^\s]+")
-          VIDEO_TITLE="${{ github.event.issue.title }}"
-          
-          # Streamable APIを叩いて動画をアップロード（インポート）
+          # 1. HTMLから送られてきたBase64動画データを抽出して動画ファイルに復元
+          echo "$ISSUE_BODY" | sed -n 's/.*<!-- VIDEO_DATA_START -->\(.*\)<!-- VIDEO_DATA_END -->.*/\1/p' | sed 's/^data:video\/[^;]*;base64,//' | base64 -d > video.mp4
+
+          # 2. Streamable APIを使って動画ファイルをアップロード
           RESPONSE=$(curl -u "$STREAMABLE_EMAIL:$STREAMABLE_PASSWORD" \
-            -d "url=$VIDEO_URL" \
-            -d "title=$VIDEO_TITLE" \
+            -F "file=@video.mp4" \
+            -F "title=$ISSUE_TITLE" \
             https://streamable.com)
           
-          # レスポンスから短縮コード（shortcode）を抽出
+          # 3. 返ってきたデータから動画の「識別コード（shortcode）」を取り出す
           SHORTCODE=$(echo $RESPONSE | jq -r '.shortcode')
-          STREAMABLE_EMBED="https://streamable.com"
           
-          # videos.json にデータを追加するスクリプトを実行（Node.js or Python）
-          # その後、変更をリポジトリにコミット＆プッシュする
+          if [ "$SHORTCODE" = "null" ] || [ -z "$SHORTCODE" ]; then
+            echo "Streamableへのアップロードに失敗しました。"
+            exit 1
+          fi
+
+          # 4. videos.json を更新するスクリプト（Node.js）を実行
+          node -e "
+            const fs = require('fs');
+            const file = './videos.json';
+            const data = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
+            
+            data.unshift({
+              title: process.env.ISSUE_TITLE,
+              streamable_url: 'https://streamable.com' + '$SHORTCODE',
+              date: new Date().toISOString().split('T')[0]
+            });
+            
+            fs.writeFileSync(file, JSON.stringify(data, null, 2));
+          "
+
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add videos.json
+          git commit -m "Add new video: ${{ github.event.issue.title }}"
+          git push
+
+      - name: Close Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            })
