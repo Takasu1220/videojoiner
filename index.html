@@ -4,16 +4,74 @@
     <meta charset="UTF-8">
     <title>GitHub内完結 動画サイト</title>
     <style>
-        .video-card { margin-bottom: 20px; }
+        .upload-box { border: 2px dashed #ccc; padding: 20px; margin-bottom: 30px; background: #f9f9f9; }
+        .video-card { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
         iframe { width: 100%; max-width: 640px; height: 360px; border: none; }
     </style>
 </head>
 <body>
+
+    <h1>動画を投稿する</h1>
+    <div class="upload-box">
+        <input type="text" id="video-title" placeholder="動画のタイトルを入力" style="width: 100%; margin-bottom: 10px;"><br>
+        <input type="file" id="video-file" accept="video/*"><br><br>
+        <button onclick="uploadVideo()">動画を投稿する</button>
+        <p id="status"></p>
+    </div>
+
     <h1>動画一覧</h1>
     <div id="video-list"></div>
 
     <script>
-        // videos.json から動画一覧を取得して描画
+        // 注意: このトークンは一般公開されるため、権限を「対象リポジトリのIssue作成のみ」に絞ったトークンを使用してください。
+        const GITHUB_TOKEN = "ここに手順1でコピーしたgithub_pat_xxxxを貼り付け";
+        const REPO_OWNER = "あなたのGitHubユーザー名";
+        const REPO_NAME = "あなたのリポジトリ名";
+
+        async function uploadVideo() {
+            const title = document.getElementById('video-title').value;
+            const fileInput = document.getElementById('video-file');
+            const status = document.getElementById('status');
+
+            if (!title || !fileInput.files[0]) {
+                alert('タイトルと動画ファイルを選択してください。');
+                return;
+            }
+
+            status.innerText = "動画を処理中...";
+            const file = fileInput.files[0];
+
+            // 1. 動画ファイルをBase64（テキスト形式）に変換
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async function () {
+                const base64Data = reader.result;
+
+                status.innerText = "GitHubへリクエストを送信中...";
+
+                // 2. GitHubにIssueを作成して動画データを送る（これが合図になります）
+                const response = await fetch(`https://github.com{REPO_OWNER}/${REPO_NAME}/issues`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        body: `<!-- VIDEO_DATA_START -->${base64Data}<!-- VIDEO_DATA_END -->`,
+                        labels: ['video-upload']
+                    })
+                });
+
+                if (response.ok) {
+                    status.innerText = "投稿リクエスト完了！数分後に動画一覧に反映されます。";
+                } else {
+                    status.innerText = "投稿に失敗しました。設定を確認してください。";
+                }
+            };
+        }
+
+        // 動画一覧を取得して表示する処理（既存のコード）
         fetch('./videos.json')
             .then(res => res.json())
             .then(data => {
@@ -24,10 +82,11 @@
                     card.innerHTML = `
                         <h3>${video.title}</h3>
                         <iframe src="${video.streamable_url}" allowfullscreen></iframe>
-                        <p>投稿日: ${video.date}</p>
                     `;
                     container.appendChild(card);
                 });
+            }).catch(() => {
+                document.getElementById('video-list').innerText = "動画がまだありません。";
             });
     </script>
 </body>
