@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>GitHub内完結 動画サイト</title>
+    <style>
+        .video-card { margin-bottom: 20px; }
+        iframe { width: 100%; max-width: 640px; height: 360px; border: none; }
+    </style>
+</head>
+<body>
+    <h1>動画一覧</h1>
+    <div id="video-list"></div>
+
+    <script>
+        // videos.json から動画一覧を取得して描画
+        fetch('./videos.json')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('video-list');
+                data.forEach(video => {
+                    const card = document.createElement('div');
+                    card.className = 'video-card';
+                    card.innerHTML = `
+                        <h3>${video.title}</h3>
+                        <iframe src="${video.streamable_url}" allowfullscreen></iframe>
+                        <p>投稿日: ${video.date}</p>
+                    `;
+                    container.appendChild(card);
+                });
+            });
+    </script>
+</body>
+</html>
