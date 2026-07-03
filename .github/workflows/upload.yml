@@ -6,7 +6,6 @@ on:
 jobs:
   upload:
     runs-on: ubuntu-latest
-    # 「video-upload」というラベルがついたIssue（投稿）が作られたときだけ実行する
     if: contains(github.event.issue.labels.*.name, 'video-upload')
     
     steps:
@@ -16,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-node-version: '20'
+          node-version: '20' # ←【ここを修正しました】node-node-version になっていたバグを直しました
 
       - name: Process Video and Upload
         env:
